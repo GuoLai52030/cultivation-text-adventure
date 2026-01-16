@@ -1,0 +1,1673 @@
+import { GAME_CONFIG } from "./config.js";
+
+export class BackgroundLayer {
+  constructor(speedFactor, drawFn, width, height) {
+    this.speedFactor = speedFactor;
+    this.offset = 0;
+    this.baseWidth = width;
+    this.baseHeight = height;
+    this.offscreen = document.createElement("canvas");
+    this.offscreen.width = width;
+    this.offscreen.height = height;
+    this.offCtx = this.offscreen.getContext("2d");
+    drawFn(this.offCtx, width, height);
+  }
+
+  update(delta, worldSpeed) {
+    this.offset += worldSpeed * this.speedFactor * delta;
+    if (this.offset > this.baseWidth) {
+      this.offset -= this.baseWidth;
+    }
+  }
+
+  draw(ctx, scaleX, scaleY) {
+    const w = this.baseWidth * scaleX;
+    const h = this.baseHeight * scaleY;
+    const offset = (this.offset * scaleX) % w;
+    const repeats = Math.ceil(ctx.canvas.width / w) + 1;
+    for (let i = -1; i < repeats; i++) {
+      ctx.drawImage(
+        this.offscreen,
+        0,
+        0,
+        this.baseWidth,
+        this.baseHeight,
+        -offset + i * w,
+        ctx.canvas.height - h,
+        w,
+        h
+      );
+    }
+  }
+}
+
+export class BackgroundSystem {
+  constructor(width, height) {
+    this.baseWidth = width;
+    this.baseHeight = height;
+    const farSpeed = GAME_CONFIG.parallax.far;
+    const midSpeed = GAME_CONFIG.parallax.mid;
+    const nearSpeed = GAME_CONFIG.parallax.near;
+
+    this.far = new BackgroundLayer(
+      farSpeed,
+      (ctx, w, h) => {
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(0, 0, w, h);
+        const gradient = ctx.createLinearGradient(0, 0, 0, h);
+        gradient.addColorStop(0, "#0f172a");
+        gradient.addColorStop(1, "#020617");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, h * 0.1, w, h * 0.9);
+        ctx.fillStyle = "#e5e7eb";
+        ctx.beginPath();
+        ctx.arc(w * 0.75, h * 0.2, h * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#0b1120";
+        for (let i = 0; i < 5; i++) {
+          const baseX = (i / 5) * w;
+          ctx.beginPath();
+          ctx.moveTo(baseX - 120, h * 0.9);
+          ctx.lineTo(baseX + 80, h * 0.4);
+          ctx.lineTo(baseX + 260, h * 0.9);
+          ctx.closePath();
+          ctx.fill();
+        }
+      },
+      width,
+      height
+    );
+
+    this.mid = new BackgroundLayer(
+      midSpeed,
+      (ctx, w, h) => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = "rgba(15,23,42,0.0)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "rgba(30,64,175,0.45)";
+        const towerHeight = h * 0.35;
+        const baseY = h * 0.7;
+        for (let i = 0; i < 4; i++) {
+          const baseX = (i / 4) * w + 80;
+          ctx.beginPath();
+          ctx.roundRect(baseX - 40, baseY - towerHeight, 80, towerHeight, 12);
+          ctx.fill();
+          ctx.fillRect(baseX - 60, baseY - towerHeight * 0.4, 120, 10);
+          ctx.fillRect(baseX - 50, baseY - towerHeight * 0.7, 100, 8);
+        }
+      },
+      width,
+      height
+    );
+
+    this.near = new BackgroundLayer(
+      nearSpeed,
+      (ctx, w, h) => {
+        ctx.clearRect(0, 0, w, h);
+        const baseY = h * 0.82;
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(0, baseY, w, h - baseY);
+        ctx.fillStyle = "#0f172a";
+        for (let i = 0; i < 12; i++) {
+          const x = (i / 12) * w;
+          ctx.beginPath();
+          ctx.roundRect(x - 60, baseY - 24, 120, 26, 8);
+          ctx.fill();
+        }
+      },
+      width,
+      height
+    );
+
+    this.scaleX = 1;
+  }
+
+  update(delta, worldSpeed, backgroundScaleX) {
+    this.scaleX = backgroundScaleX || 1;
+    this.far.update(delta, worldSpeed);
+    this.mid.update(delta, worldSpeed);
+    this.near.update(delta, worldSpeed);
+  }
+
+  draw(ctx, scale) {
+    const sx = this.scaleX * scale;
+    const sy = scale;
+    this.far.draw(ctx, sx, sy);
+    this.mid.draw(ctx, sx, sy);
+    this.near.draw(ctx, sx, sy);
+  }
+}
+export const GAME_CONFIG = {
+  canvas: {
+    baseWidth: 1280,
+    baseHeight: 720,
+  },
+  physics: {
+    gravity: 1800,
+  },
+  speed: {
+    initial: 300,
+    maxMultiplier: 2,
+    difficultyStepMeters: 1000,
+    difficultyIncreasePercent: 0.05,
+  },
+  parallax: {
+    far: 0.2,
+    mid: 0.5,
+    near: 1,
+  },
+  player: {
+    xRatio: 0.33,
+    width: 60,
+    height: 90,
+    runFrameCount: 8,
+    jumpFrameCount: 3,
+    slideFrameCount: 2,
+    maxJumpHeight: 200,
+    firstJumpHeight: 150,
+    secondJumpHeight: 50,
+    jumpRotationDeg: 15,
+    slideDuration: 0.8,
+    slideHeightScale: 0.6,
+    hurtFlashCount: 3,
+    autoShootInterval: 0.5,
+    manualShootKey: "KeyJ",
+  },
+  sword: {
+    speed: 500,
+    range: 800,
+    width: 40,
+    height: 10,
+  },
+  terrain: {
+    platformGapMin: 200,
+    platformGapMax: 400,
+    platformLengthMin: 300,
+    platformLengthMax: 600,
+    pitMin: 150,
+    pitMax: 300,
+  },
+  collectibles: {
+    auraSpacingMin: 50,
+    auraSpacingMax: 100,
+    scorePerAura: 10,
+  },
+  buffs: {
+    swordFlight: {
+      duration: 8,
+      speedMultiplier: 1.5,
+      invincible: true,
+      backgroundScaleX: 1.2,
+    },
+    shield: {
+      hitCapacity: 1,
+    },
+  },
+  particles: {
+    cloudCountMin: 5,
+    cloudCountMax: 8,
+    explosionCountMin: 15,
+    explosionCountMax: 20,
+    initialSpeed: 200,
+    gravity: 800,
+    lifeMin: 0.5,
+    lifeMax: 1.2,
+  },
+  pools: {
+    platforms: 20,
+    auras: 50,
+    enemies: 10,
+  },
+  buffsSpawn: {
+    swordChance: 0.15,
+    shieldChance: 0.1,
+  },
+};
+
+export const ACHIEVEMENTS = {
+  rookie: {
+    key: "rookie",
+    name: "初出茅庐",
+    condition: (stats) => stats.distance > 500,
+  },
+  strictCultivator: {
+    key: "strictCultivator",
+    name: "严厉修士",
+    condition: (stats) => stats.enemiesDefeated >= 100,
+  },
+  doubleMaster: {
+    key: "doubleMaster",
+    name: "凌空虚渡",
+    condition: (stats) => stats.doubleJumps >= 20,
+  },
+  lightBody: {
+    key: "lightBody",
+    name: "身轻如燕",
+    condition: (stats) => stats.noPitfalls && stats.distance >= 1000,
+  },
+  collector: {
+    key: "collector",
+    name: "法宝收集者",
+    condition: (stats) => stats.swordsCollected >= 3,
+  },
+};
+import { GAME_CONFIG } from "./config.js";
+
+export class RectEntity {
+  constructor() {
+    this.x = 0;
+    this.y = 0;
+    this.width = 0;
+    this.height = 0;
+    this.active = false;
+  }
+
+  reset() {
+    this.active = false;
+  }
+
+  get left() {
+    return this.x;
+  }
+  get right() {
+    return this.x + this.width;
+  }
+  get top() {
+    return this.y;
+  }
+  get bottom() {
+    return this.y + this.height;
+  }
+
+  intersects(other) {
+    return !(
+      this.right < other.left ||
+      this.left > other.right ||
+      this.bottom < other.top ||
+      this.top > other.bottom
+    );
+  }
+}
+
+export class Platform extends RectEntity {
+  constructor() {
+    super();
+    this.height = 20;
+  }
+}
+
+export class Aura extends RectEntity {
+  constructor() {
+    super();
+    this.radius = 10;
+    this.type = "aura";
+    this.collecting = false;
+    this.collectTime = 0;
+  }
+
+  reset() {
+    super.reset();
+    this.type = "aura";
+    this.collecting = false;
+    this.collectTime = 0;
+  }
+}
+
+export class Enemy extends RectEntity {
+  constructor() {
+    super();
+  }
+}
+
+export class Sword extends RectEntity {
+  constructor() {
+    super();
+    this.distanceTraveled = 0;
+  }
+
+  reset() {
+    super.reset();
+    this.distanceTraveled = 0;
+  }
+}
+
+export class Particle {
+  constructor() {
+    this.x = 0;
+    this.y = 0;
+    this.vx = 0;
+    this.vy = 0;
+    this.life = 0;
+    this.age = 0;
+    this.color = "white";
+    this.size = 4;
+    this.active = false;
+  }
+
+  reset() {
+    this.active = false;
+    this.age = 0;
+  }
+}
+
+export class Player {
+  constructor() {
+    const cfg = GAME_CONFIG.player;
+    this.width = cfg.width;
+    this.height = cfg.height;
+    this.baseHeight = cfg.height;
+    this.x = 0;
+    this.y = 0;
+    this.vy = 0;
+    this.onGround = false;
+    this.jumpCount = 0;
+    this.maxJumps = 2;
+    this.state = "run";
+    this.slideTimer = 0;
+    this.rotation = 0;
+    this.shieldHits = 0;
+    this.invincibleTimer = 0;
+    this.autoShootTimer = 0;
+    this.hurtFlashTimer = 0;
+    this.hurtFlashCount = 0;
+    this.visible = true;
+  }
+
+  reset(x, groundY) {
+    this.x = x;
+    this.y = groundY - this.baseHeight;
+    this.vy = 0;
+    this.onGround = true;
+    this.jumpCount = 0;
+    this.state = "run";
+    this.slideTimer = 0;
+    this.rotation = 0;
+    this.shieldHits = 0;
+    this.invincibleTimer = 0;
+    this.autoShootTimer = 0;
+    this.hurtFlashTimer = 0;
+    this.hurtFlashCount = 0;
+    this.visible = true;
+    this.height = this.baseHeight;
+  }
+
+  get collisionRect() {
+    return {
+      left: this.x,
+      right: this.x + this.width,
+      top: this.y,
+      bottom: this.y + this.height,
+    };
+  }
+}
+import { GAME_CONFIG, ACHIEVEMENTS } from "./config.js";
+import { InputController } from "./input.js";
+import { BackgroundSystem } from "./background.js";
+import { ObjectPool } from "./objectPool.js";
+import { Platform, Aura, Enemy, Sword, Player } from "./entities.js";
+import { ParticleSystem } from "./particles.js";
+
+export class Game {
+  constructor(canvas, ui) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.ui = ui;
+    this.config = GAME_CONFIG;
+    this.scale = 1;
+
+    this.background = new BackgroundSystem(
+      GAME_CONFIG.canvas.baseWidth,
+      GAME_CONFIG.canvas.baseHeight
+    );
+    this.particles = new ParticleSystem();
+    this.player = new Player();
+
+    this.platformPool = new ObjectPool(() => new Platform(), GAME_CONFIG.pools.platforms);
+    this.auraPool = new ObjectPool(() => new Aura(), GAME_CONFIG.pools.auras);
+    this.enemyPool = new ObjectPool(() => new Enemy(), GAME_CONFIG.pools.enemies);
+    this.swordPool = new ObjectPool(() => new Sword(), 16);
+
+    this.platforms = [];
+    this.auras = [];
+    this.enemies = [];
+    this.swords = [];
+
+    this.input = new InputController(canvas);
+    this.input.on("jump", () => this.handleJump());
+    this.input.on("slide", () => this.handleSlide());
+    this.input.on("shoot", () => this.handleManualShoot());
+
+    this.state = "ready";
+    this.baseSpeed = GAME_CONFIG.speed.initial;
+    this.currentSpeed = this.baseSpeed;
+    this.distance = 0;
+    this.score = 0;
+    this.elapsed = 0;
+    this.lastTime = 0;
+    this.gameOver = false;
+
+    this.buffSword = {
+      active: false,
+      timer: 0,
+    };
+    this.buffShield = {
+      active: false,
+      hitsLeft: 0,
+    };
+
+    this.stats = {
+      distance: 0,
+      enemiesDefeated: 0,
+      doubleJumps: 0,
+      noPitfalls: true,
+      swordsCollected: 0,
+    };
+
+    this.slideGhosts = [];
+
+    this.achievementsState = this.loadAchievements();
+
+    this.resize();
+    window.addEventListener("resize", () => this.resize());
+
+    this.initLevel();
+
+    this.loop = this.loop.bind(this);
+  }
+
+  resize() {
+    const container = this.canvas.parentElement;
+    const { baseWidth, baseHeight } = GAME_CONFIG.canvas;
+    const ratio = baseWidth / baseHeight;
+    const w = container.clientWidth;
+    const h = window.innerHeight * 0.7;
+    const targetWidth = w;
+    const targetHeight = targetWidth / ratio;
+    const finalHeight = Math.min(h, targetHeight);
+    const finalWidth = finalHeight * ratio;
+    this.canvas.width = baseWidth;
+    this.canvas.height = baseHeight;
+    this.canvas.style.width = `${finalWidth}px`;
+    this.canvas.style.height = `${finalHeight}px`;
+    this.scale = finalWidth / baseWidth;
+  }
+
+  initLevel() {
+    this.platforms.length = 0;
+    this.auras.length = 0;
+    this.enemies.length = 0;
+    this.swords.length = 0;
+
+    const baseGroundY = GAME_CONFIG.canvas.baseHeight * 0.8;
+    let cursorX = 0;
+    for (let i = 0; i < 6; i++) {
+      const length = 400;
+      const p = this.platformPool.acquire();
+      p.x = cursorX;
+      p.y = baseGroundY;
+      p.width = length;
+      p.height = 24;
+      p.active = true;
+      this.platforms.push(p);
+      cursorX += length + 50;
+    }
+
+    const playerX = GAME_CONFIG.canvas.baseWidth * GAME_CONFIG.player.xRatio;
+    this.player.reset(playerX, baseGroundY);
+  }
+
+  start() {
+    this.state = "running";
+    this.gameOver = false;
+    this.distance = 0;
+    this.score = 0;
+    this.elapsed = 0;
+    this.currentSpeed = this.baseSpeed;
+    this.buffSword.active = false;
+    this.buffSword.timer = 0;
+    this.buffShield.active = false;
+    this.buffShield.hitsLeft = 0;
+    this.stats = {
+      distance: 0,
+      enemiesDefeated: 0,
+      doubleJumps: 0,
+      noPitfalls: true,
+      swordsCollected: 0,
+    };
+    this.initLevel();
+    this.lastTime = performance.now();
+    requestAnimationFrame(this.loop);
+  }
+
+  loop(timestamp) {
+    if (this.state !== "running") return;
+    const delta = Math.min((timestamp - this.lastTime) / 1000, 0.05);
+    this.lastTime = timestamp;
+    this.update(delta);
+    this.draw();
+    requestAnimationFrame(this.loop);
+  }
+
+  handleJump() {
+    if (this.state !== "running") return;
+    if (this.player.jumpCount < this.player.maxJumps) {
+      const cfg = GAME_CONFIG.player;
+      const gravity = GAME_CONFIG.physics.gravity;
+      if (this.player.jumpCount === 0) {
+        this.player.vy = -Math.sqrt(2 * gravity * cfg.firstJumpHeight);
+        this.player.state = "jump";
+        this.particles.spawnCloudBurst(
+          this.player.x + this.player.width * 0.5,
+          this.player.y + this.player.height
+        );
+      } else {
+        this.player.vy = -Math.sqrt(2 * gravity * cfg.secondJumpHeight);
+        this.stats.doubleJumps += 1;
+      }
+      this.player.jumpCount += 1;
+      this.player.onGround = false;
+      this.player.rotation = (cfg.jumpRotationDeg * Math.PI) / 180;
+    }
+  }
+
+  handleSlide() {
+    if (this.state !== "running") return;
+    if (!this.player.onGround) return;
+    const cfg = GAME_CONFIG.player;
+    this.player.state = "slide";
+    this.player.slideTimer = cfg.slideDuration;
+    this.player.height = this.player.baseHeight * cfg.slideHeightScale;
+    this.player.y = GAME_CONFIG.canvas.baseHeight * 0.8 - this.player.height;
+
+    this.slideGhosts.length = 0;
+  }
+
+  handleManualShoot() {
+    if (this.state !== "running") return;
+    this.spawnSword();
+  }
+
+  spawnSword() {
+    const s = this.swordPool.acquire();
+    s.active = true;
+    s.width = GAME_CONFIG.sword.width;
+    s.height = GAME_CONFIG.sword.height;
+    s.x = this.player.x + this.player.width * 0.8;
+    s.y = this.player.y + this.player.height * 0.3;
+    s.distanceTraveled = 0;
+    this.swords.push(s);
+  }
+
+  giveSwordFlightBuff() {
+    this.buffSword.active = true;
+    this.buffSword.timer = GAME_CONFIG.buffs.swordFlight.duration;
+  }
+
+  giveShieldBuff() {
+    this.buffShield.active = true;
+    this.buffShield.hitsLeft = GAME_CONFIG.buffs.shield.hitCapacity;
+    this.player.shieldHits = this.buffShield.hitsLeft;
+  }
+
+  updateDifficulty() {
+    const step = GAME_CONFIG.speed.difficultyStepMeters;
+    const factor = Math.min(
+      1 +
+        Math.floor(this.distance / step) * GAME_CONFIG.speed.difficultyIncreasePercent,
+      GAME_CONFIG.speed.maxMultiplier
+    );
+    this.currentSpeed = this.baseSpeed * factor;
+  }
+
+  updatePlayer(delta) {
+    const gravity = GAME_CONFIG.physics.gravity;
+    this.player.vy += gravity * delta;
+    this.player.y += this.player.vy * delta;
+
+    const groundY = GAME_CONFIG.canvas.baseHeight * 0.8;
+    let grounded = false;
+    for (const p of this.platforms) {
+      if (!p.active) continue;
+      const landing =
+        this.player.collisionRect.bottom >= p.y &&
+        this.player.collisionRect.bottom - this.player.vy * delta <= p.y &&
+        this.player.collisionRect.right > p.left &&
+        this.player.collisionRect.left < p.right;
+      if (landing) {
+        this.player.y = p.y - this.player.height;
+        this.player.vy = 0;
+        grounded = true;
+      }
+    }
+
+    if (this.player.y + this.player.height >= groundY && !grounded) {
+      this.player.y = groundY - this.player.height;
+      this.player.vy = 0;
+      grounded = true;
+    }
+
+    this.player.onGround = grounded;
+    if (grounded) {
+      this.player.jumpCount = 0;
+      this.player.rotation = 0;
+      if (this.player.state !== "slide") {
+        this.player.state = "run";
+        this.player.height = this.player.baseHeight;
+      }
+    }
+
+    if (this.player.state === "slide") {
+      this.player.slideTimer -= delta;
+      this.slideGhosts.unshift({
+        x: this.player.x,
+        y: this.player.y,
+        width: this.player.width,
+        height: this.player.height,
+        alpha: 0.6,
+      });
+      if (this.slideGhosts.length > 3) {
+        this.slideGhosts.pop();
+      }
+      this.slideGhosts.forEach((g) => {
+        g.alpha *= 0.75;
+      });
+      if (this.player.slideTimer <= 0) {
+        this.player.state = "run";
+        this.player.height = this.player.baseHeight;
+        this.player.y = groundY - this.player.height;
+        this.slideGhosts.length = 0;
+      }
+    }
+
+    if (this.buffSword.active) {
+      this.buffSword.timer -= delta;
+      if (this.buffSword.timer <= 0) {
+        this.buffSword.active = false;
+      }
+    }
+
+    if (this.buffShield.active && this.buffShield.hitsLeft <= 0) {
+      this.buffShield.active = false;
+    }
+
+    if (this.player.invincibleTimer > 0) {
+      this.player.invincibleTimer -= delta;
+    }
+
+    if (this.player.hurtFlashTimer > 0) {
+      this.player.hurtFlashTimer -= delta;
+      if (this.player.hurtFlashTimer <= 0) {
+        this.player.visible = !this.player.visible;
+        this.player.hurtFlashTimer = 0.1;
+        this.player.hurtFlashCount += 1;
+        if (this.player.hurtFlashCount >= GAME_CONFIG.player.hurtFlashCount * 2) {
+          this.player.visible = true;
+          this.player.hurtFlashTimer = 0;
+        }
+      }
+    }
+
+    this.player.autoShootTimer += delta;
+    if (this.player.autoShootTimer >= GAME_CONFIG.player.autoShootInterval) {
+      this.player.autoShootTimer = 0;
+      this.spawnSword();
+    }
+  }
+
+  updateWorld(delta) {
+    const speed = this.currentSpeed * delta;
+    const lists = [
+      { items: this.platforms, pool: this.platformPool },
+      { items: this.auras, pool: this.auraPool },
+      { items: this.enemies, pool: this.enemyPool },
+    ];
+    for (const { items, pool } of lists) {
+      for (let i = items.length - 1; i >= 0; i--) {
+        const obj = items[i];
+        if (!obj.active) {
+          pool.release(obj);
+          items.splice(i, 1);
+          continue;
+        }
+        obj.x -= speed;
+        if (obj.right < 0) {
+          obj.active = false;
+          pool.release(obj);
+          items.splice(i, 1);
+        }
+      }
+    }
+
+    for (let i = this.swords.length - 1; i >= 0; i--) {
+      const s = this.swords[i];
+      if (!s.active) {
+        this.swords.splice(i, 1);
+        continue;
+      }
+      s.x += GAME_CONFIG.sword.speed * delta;
+      s.distanceTraveled += GAME_CONFIG.sword.speed * delta;
+      if (s.distanceTraveled >= GAME_CONFIG.sword.range) {
+        s.active = false;
+        this.swordPool.release(s);
+        this.swords.splice(i, 1);
+      }
+    }
+  }
+
+  generateTerrain() {
+    const worldRight = GAME_CONFIG.canvas.baseWidth * 1.5;
+    let maxX = 0;
+    for (const p of this.platforms) {
+      if (p.active && p.right > maxX) maxX = p.right;
+    }
+    while (maxX < worldRight) {
+      const distanceFactor = 1 + this.distance / 1000;
+      const gap =
+        GAME_CONFIG.terrain.platformGapMin +
+        Math.random() *
+          (GAME_CONFIG.terrain.platformGapMax * distanceFactor -
+            GAME_CONFIG.terrain.platformGapMin);
+      const length =
+        GAME_CONFIG.terrain.platformLengthMin +
+        Math.random() *
+          (GAME_CONFIG.terrain.platformLengthMax - GAME_CONFIG.terrain.platformLengthMin);
+      const pit =
+        GAME_CONFIG.terrain.pitMin +
+        Math.random() * (GAME_CONFIG.terrain.pitMax * distanceFactor - GAME_CONFIG.terrain.pitMin);
+
+      maxX += gap + pit;
+      const p = this.platformPool.acquire();
+      p.x = maxX;
+      p.y = GAME_CONFIG.canvas.baseHeight * 0.8;
+      p.width = length;
+      p.height = 24;
+      p.active = true;
+      this.platforms.push(p);
+
+      const auraCount = Math.floor(length / GAME_CONFIG.collectibles.auraSpacingMax);
+      for (let i = 0; i < auraCount; i++) {
+        const a = this.auraPool.acquire();
+        a.active = true;
+        a.radius = 10;
+        a.width = a.radius * 2;
+        a.height = a.radius * 2;
+        a.x =
+          p.x +
+          40 +
+          i *
+            (GAME_CONFIG.collectibles.auraSpacingMin +
+              Math.random() *
+                (GAME_CONFIG.collectibles.auraSpacingMax -
+                  GAME_CONFIG.collectibles.auraSpacingMin));
+        a.y = p.y - 60 - Math.random() * 40;
+        a.type = "aura";
+
+        const r = Math.random();
+        if (r < GAME_CONFIG.buffsSpawn.swordChance) {
+          a.type = "sword";
+        } else if (r < GAME_CONFIG.buffsSpawn.swordChance + GAME_CONFIG.buffsSpawn.shieldChance) {
+          a.type = "shield";
+        }
+        this.auras.push(a);
+      }
+
+      if (Math.random() < 0.3) {
+        const e = this.enemyPool.acquire();
+        e.active = true;
+        e.width = 50;
+        e.height = 60;
+        e.x = p.x + length * 0.7;
+        e.y = p.y - e.height;
+        this.enemies.push(e);
+      }
+
+      maxX += length;
+    }
+  }
+
+  checkCollisions(delta) {
+    const playerRect = this.player.collisionRect;
+
+    for (let i = this.auras.length - 1; i >= 0; i--) {
+      const a = this.auras[i];
+      if (!a.active) continue;
+      if (
+        playerRect.right > a.left &&
+        playerRect.left < a.right &&
+        playerRect.bottom > a.top &&
+        playerRect.top < a.bottom
+      ) {
+        a.collecting = true;
+        a.collectTime = 0;
+        if (a.type === "aura") {
+          this.score += GAME_CONFIG.collectibles.scorePerAura;
+        } else if (a.type === "sword") {
+          this.giveSwordFlightBuff();
+          this.stats.swordsCollected += 1;
+        } else if (a.type === "shield") {
+          this.giveShieldBuff();
+        }
+      }
+    }
+
+    for (let i = this.auras.length - 1; i >= 0; i--) {
+      const a = this.auras[i];
+      if (!a.collecting) continue;
+      a.collectTime += delta;
+      const t = a.collectTime / 0.3;
+      if (t >= 1) {
+        a.active = false;
+        this.auraPool.release(a);
+        this.auras.splice(i, 1);
+      }
+    }
+
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (!e.active) continue;
+      for (let j = this.swords.length - 1; j >= 0; j--) {
+        const s = this.swords[j];
+        if (!s.active) continue;
+        if (s.intersects(e)) {
+          e.active = false;
+          this.enemyPool.release(e);
+          this.enemies.splice(i, 1);
+          s.active = false;
+          this.swordPool.release(s);
+          this.swords.splice(j, 1);
+          this.stats.enemiesDefeated += 1;
+          this.particles.spawnExplosion(
+            e.x + e.width / 2,
+            e.y + e.height / 2,
+            "rgba(191,219,254,",
+            "rgba(252,211,77,"
+          );
+          break;
+        }
+      }
+    }
+
+    if (!this.buffSword.active && this.player.invincibleTimer <= 0) {
+      for (const e of this.enemies) {
+        if (!e.active) continue;
+        if (
+          playerRect.right > e.left &&
+          playerRect.left < e.right &&
+          playerRect.bottom > e.top &&
+          playerRect.top < e.bottom
+        ) {
+          if (this.buffShield.active && this.buffShield.hitsLeft > 0) {
+            this.buffShield.hitsLeft -= 1;
+            this.player.hurtFlashTimer = 0.1;
+            this.player.hurtFlashCount = 0;
+            this.player.invincibleTimer = 1;
+            this.particles.spawnExplosion(
+              this.player.x + this.player.width / 2,
+              this.player.y + this.player.height / 2,
+              "rgba(251,191,36,",
+              "rgba(248,250,252,"
+            );
+          } else {
+            this.endGame(false);
+            return;
+          }
+        }
+      }
+    }
+
+    const groundY = GAME_CONFIG.canvas.baseHeight * 0.8;
+    if (this.player.y + this.player.height >= groundY + 40) {
+      this.stats.noPitfalls = false;
+      this.endGame(true);
+    }
+  }
+
+  updateAchievements() {
+    this.stats.distance = this.distance / 10;
+
+    const list = [];
+    for (const key in ACHIEVEMENTS) {
+      const ach = ACHIEVEMENTS[key];
+      const unlocked = this.achievementsState[ach.key];
+      if (!unlocked && ach.condition(this.stats)) {
+        this.achievementsState[ach.key] = true;
+        list.push(ach);
+        this.showAchievementToast(ach.name);
+      }
+    }
+    if (list.length > 0) {
+      this.saveAchievements();
+    }
+
+    const ul = document.getElementById("achievement-list");
+    if (ul) {
+      const items = ul.querySelectorAll("li");
+      items.forEach((li) => {
+        const k = li.getAttribute("data-key");
+        if (this.achievementsState[k]) {
+          li.textContent = li.textContent.replace("◻", "✔");
+        }
+      });
+    }
+  }
+
+  showAchievementToast(text) {
+    const toast = document.getElementById("achievement-toast");
+    const span = document.getElementById("achievement-text");
+    if (!toast || !span) return;
+    span.textContent = text;
+    toast.classList.remove("invisible");
+    toast.classList.add("opacity-100");
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => {
+      toast.classList.add("opacity-0");
+      setTimeout(() => {
+        toast.classList.add("invisible");
+      }, 500);
+    }, 1600);
+  }
+
+  loadAchievements() {
+    try {
+      const raw = localStorage.getItem("xiantu_achievements");
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {};
+  }
+
+  saveAchievements() {
+    try {
+      localStorage.setItem("xiantu_achievements", JSON.stringify(this.achievementsState));
+    } catch (e) {}
+  }
+
+  update(delta) {
+    this.elapsed += delta;
+    const speedBonus = this.buffSword.active
+      ? GAME_CONFIG.buffs.swordFlight.speedMultiplier
+      : 1;
+    this.distance += this.currentSpeed * speedBonus * delta;
+    this.updateDifficulty();
+
+    this.background.update(
+      delta,
+      this.currentSpeed * speedBonus,
+      this.buffSword.active ? GAME_CONFIG.buffs.swordFlight.backgroundScaleX : 1
+    );
+    this.updateWorld(delta);
+    this.generateTerrain();
+    this.updatePlayer(delta);
+    this.checkCollisions(delta);
+    this.particles.update(delta);
+    this.updateAchievements();
+    this.updateUI();
+  }
+
+  drawPlayer(ctx) {
+    if (!this.player.visible) return;
+    ctx.save();
+    ctx.translate(
+      this.player.x + this.player.width / 2,
+      this.player.y + this.player.height / 2
+    );
+    ctx.rotate(this.player.rotation);
+    ctx.translate(
+      -this.player.x - this.player.width / 2,
+      -this.player.y - this.player.height / 2
+    );
+
+    const grad = ctx.createLinearGradient(
+      this.player.x,
+      this.player.y,
+      this.player.x,
+      this.player.y + this.player.height
+    );
+    grad.addColorStop(0, "#38bdf8");
+    grad.addColorStop(1, "#0f172a");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(this.player.x, this.player.y, this.player.width, this.player.height, 18);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(248,250,252,0.85)";
+    ctx.fillRect(
+      this.player.x + this.player.width * 0.2,
+      this.player.y + this.player.height * 0.2,
+      this.player.width * 0.6,
+      this.player.height * 0.18
+    );
+
+    ctx.fillStyle = "rgba(15,23,42,0.9)";
+    ctx.beginPath();
+    ctx.arc(
+      this.player.x + this.player.width * 0.5,
+      this.player.y + this.player.height * 0.35,
+      6,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(248,250,252,0.8)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(this.player.x + this.player.width * 0.5, this.player.y + this.player.height);
+    ctx.quadraticCurveTo(
+      this.player.x + this.player.width * 0.7,
+      this.player.y + this.player.height * 0.6,
+      this.player.x + this.player.width * 0.9,
+      this.player.y + this.player.height * 0.4
+    );
+    ctx.stroke();
+
+    ctx.restore();
+
+    if (this.slideGhosts.length > 0) {
+      this.slideGhosts.forEach((g, index) => {
+        ctx.save();
+        ctx.globalAlpha = g.alpha;
+        const grad = ctx.createLinearGradient(g.x, g.y, g.x, g.y + g.height);
+        grad.addColorStop(0, "rgba(148,163,184,0.8)");
+        grad.addColorStop(1, "rgba(15,23,42,0.2)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.roundRect(g.x - index * 6, g.y, g.width, g.height, 16);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    if (this.buffShield.active && this.buffShield.hitsLeft > 0) {
+      ctx.strokeStyle = "rgba(251,191,36,0.9)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(
+        this.player.x + this.player.width / 2,
+        this.player.y + this.player.height / 2,
+        this.player.width * 0.7,
+        this.player.height * 0.85,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+    }
+  }
+
+  drawPlatforms(ctx) {
+    ctx.fillStyle = "#020617";
+    this.platforms.forEach((p) => {
+      if (!p.active) return;
+      ctx.beginPath();
+      ctx.roundRect(p.x, p.y - p.height, p.width, p.height, 8);
+      ctx.fill();
+      const grad = ctx.createLinearGradient(p.x, p.y - p.height, p.x, p.y);
+      grad.addColorStop(0, "#1f2937");
+      grad.addColorStop(1, "#0f172a");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(p.x, p.y - p.height, p.width, p.height * 0.6, 8);
+      ctx.fill();
+    });
+  }
+
+  drawAuras(ctx) {
+    this.auras.forEach((a) => {
+      if (!a.active) return;
+      const radius = a.radius * (a.collecting ? 1 - a.collectTime / 0.3 : 1);
+      const alpha = a.collecting ? 1 - a.collectTime / 0.3 : 1;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const cx = a.x + a.radius;
+      const cy = a.y + a.radius;
+      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      gradient.addColorStop(0, "rgba(190,242,255,1)");
+      gradient.addColorStop(1, "rgba(34,211,238,0.1)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  drawEnemies(ctx) {
+    this.enemies.forEach((e) => {
+      if (!e.active) return;
+      ctx.fillStyle = "#1e293b";
+      ctx.beginPath();
+      ctx.roundRect(e.x, e.y, e.width, e.height, 14);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(96,165,250,0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.x + e.width / 2, e.y + e.height / 3, 10, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+  }
+
+  drawSwords(ctx) {
+    this.swords.forEach((s) => {
+      if (!s.active) return;
+      const grad = ctx.createLinearGradient(s.x, s.y, s.x + s.width, s.y + s.height);
+      grad.addColorStop(0, "#e5e7eb");
+      grad.addColorStop(1, "#38bdf8");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(s.x, s.y, s.width, s.height, 4);
+      ctx.fill();
+    });
+  }
+
+  draw() {
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.background.draw(ctx, 1);
+    this.drawPlatforms(ctx);
+    this.drawAuras(ctx);
+    this.drawEnemies(ctx);
+    this.drawSwords(ctx);
+    this.drawPlayer(ctx);
+    this.particles.draw(ctx);
+  }
+
+  updateUI() {
+    const distanceMeters = Math.floor(this.distance / 10);
+    this.ui.distanceText.textContent = `${distanceMeters} m`;
+    this.ui.metersText.textContent = `${distanceMeters} m`;
+    this.ui.scoreText.textContent = `${this.score}`;
+    this.ui.speedText.textContent = `${Math.round(this.currentSpeed)} px/s`;
+    this.ui.statePill.textContent = this.state === "running" ? "修行中" : "准备";
+    this.ui.buffSwordText.textContent = this.buffSword.active ? "御剑中" : "未激活";
+    this.ui.buffShieldText.textContent = this.buffShield.active ? "护盾在身" : "未激活";
+  }
+
+  endGame(fellIntoPit) {
+    this.state = "ended";
+    this.gameOver = true;
+    if (fellIntoPit) {
+      this.stats.noPitfalls = false;
+    }
+    this.showResultModal();
+  }
+
+  showResultModal() {
+    const modal = document.getElementById("result-modal");
+    if (!modal) return;
+    const distanceMeters = Math.floor(this.distance / 10);
+    document.getElementById("result-distance").textContent = `${distanceMeters} m`;
+    document.getElementById("result-score").textContent = `${this.score}`;
+    document.getElementById("result-enemies").textContent = `${this.stats.enemiesDefeated}`;
+    document.getElementById("result-double").textContent = `${this.stats.doubleJumps}`;
+    modal.classList.remove("pointer-events-none", "opacity-0", "invisible");
+  }
+}
+export class InputController {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.keys = new Set();
+    this.listeners = {};
+
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleKeyUp = this.handleKeyUp.bind(this);
+    this.handlePointerDown = this.handlePointerDown.bind(this);
+
+    window.addEventListener("keydown", this.handleKeyDown);
+    window.addEventListener("keyup", this.handleKeyUp);
+    canvas.addEventListener("pointerdown", this.handlePointerDown);
+  }
+
+  on(action, handler) {
+    this.listeners[action] = handler;
+  }
+
+  emit(action, payload) {
+    const fn = this.listeners[action];
+    if (fn) fn(payload);
+  }
+
+  handleKeyDown(e) {
+    this.keys.add(e.code);
+    if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
+      e.preventDefault();
+      this.emit("jump");
+    }
+    if (e.code === "ArrowDown" || e.code === "KeyS") {
+      e.preventDefault();
+      this.emit("slide");
+    }
+    if (e.code === "KeyJ") {
+      e.preventDefault();
+      this.emit("shoot");
+    }
+  }
+
+  handleKeyUp(e) {
+    this.keys.delete(e.code);
+  }
+
+  handlePointerDown(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (x < rect.width / 2) {
+      this.emit("slide");
+    } else {
+      this.emit("jump");
+    }
+  }
+
+  destroy() {
+    window.removeEventListener("keydown", this.handleKeyDown);
+    window.removeEventListener("keyup", this.handleKeyUp);
+    this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
+  }
+}
+
+import { Game } from "./game.js";
+
+function init() {
+  const canvas = document.getElementById("game-canvas");
+  const ui = {
+    distanceText: document.getElementById("distance-text"),
+    scoreText: document.getElementById("score-text"),
+    speedText: document.getElementById("speed-text"),
+    metersText: document.getElementById("meters-text"),
+    statePill: document.getElementById("state-pill"),
+    buffSwordText: document.getElementById("buff-sword-text"),
+    buffShieldText: document.getElementById("buff-shield-text"),
+  };
+
+  const game = new Game(canvas, ui);
+
+  const btnStart = document.getElementById("btn-start");
+  const btnRestart = document.getElementById("btn-restart");
+  const btnModalRestart = document.getElementById("btn-modal-restart");
+  const resultModal = document.getElementById("result-modal");
+
+  btnStart.addEventListener("click", () => {
+    if (game.state === "running") return;
+    resultModal.classList.add("pointer-events-none", "opacity-0", "invisible");
+    game.start();
+  });
+
+  btnRestart.addEventListener("click", () => {
+    resultModal.classList.add("pointer-events-none", "opacity-0", "invisible");
+    game.start();
+  });
+
+  btnModalRestart.addEventListener("click", () => {
+    resultModal.classList.add("pointer-events-none", "opacity-0", "invisible");
+    game.start();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", init);
+
+export class ObjectPool {
+  constructor(factory, size) {
+    this.factory = factory;
+    this.pool = [];
+    for (let i = 0; i < size; i++) {
+      this.pool.push(factory());
+    }
+  }
+
+  acquire() {
+    if (this.pool.length > 0) {
+      return this.pool.pop();
+    }
+    return this.factory();
+  }
+
+  release(obj) {
+    if (obj.reset) {
+      obj.reset();
+    }
+    this.pool.push(obj);
+  }
+}
+
+
+import { GAME_CONFIG } from "./config.js";
+import { Particle } from "./entities.js";
+import { ObjectPool } from "./objectPool.js";
+
+export class ParticleSystem {
+  constructor() {
+    const maxCount =
+      GAME_CONFIG.particles.explosionCountMax + GAME_CONFIG.particles.cloudCountMax;
+    this.pool = new ObjectPool(() => new Particle(), maxCount);
+    this.particles = [];
+  }
+
+  spawnCloudBurst(x, y) {
+    const { cloudCountMin, cloudCountMax, initialSpeed, gravity, lifeMin, lifeMax } =
+      GAME_CONFIG.particles;
+    const count =
+      cloudCountMin + Math.floor(Math.random() * (cloudCountMax - cloudCountMin + 1));
+    for (let i = 0; i < count; i++) {
+      const p = this.pool.acquire();
+      p.x = x;
+      p.y = y;
+      const angle = Math.random() * Math.PI;
+      const speed = initialSpeed * (0.4 + Math.random() * 0.6);
+      p.vx = Math.cos(angle) * speed;
+      p.vy = -Math.abs(Math.sin(angle) * speed);
+      p.life = lifeMin + Math.random() * (lifeMax - lifeMin);
+      p.age = 0;
+      p.size = 6 + Math.random() * 4;
+      p.color = "rgba(226,232,240,";
+      p.gravity = gravity;
+      p.active = true;
+      this.particles.push(p);
+    }
+  }
+
+  spawnExplosion(x, y, colorA, colorB) {
+    const { explosionCountMin, explosionCountMax, initialSpeed, gravity, lifeMin, lifeMax } =
+      GAME_CONFIG.particles;
+    const count =
+      explosionCountMin +
+      Math.floor(Math.random() * (explosionCountMax - explosionCountMin + 1));
+    for (let i = 0; i < count; i++) {
+      const p = this.pool.acquire();
+      p.x = x;
+      p.y = y;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = initialSpeed * (0.5 + Math.random());
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.life = lifeMin + Math.random() * (lifeMax - lifeMin);
+      p.age = 0;
+      p.size = 4 + Math.random() * 4;
+      const t = Math.random();
+      const color = t < 0.5 ? colorA : colorB;
+      p.color = color;
+      p.gravity = gravity;
+      p.active = true;
+      this.particles.push(p);
+    }
+  }
+
+  update(delta) {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.age += delta;
+      if (p.age >= p.life) {
+        p.active = false;
+        this.pool.release(p);
+        this.particles.splice(i, 1);
+        continue;
+      }
+      p.vy += p.gravity * delta;
+      p.x += p.vx * delta;
+      p.y += p.vy * delta;
+    }
+  }
+
+  draw(ctx) {
+    for (const p of this.particles) {
+      const alpha = 1 - p.age / p.life;
+      if (p.color.startsWith("rgba(")) {
+        ctx.fillStyle = p.color + alpha + ")";
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = alpha;
+      }
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>仙途酷跑</title>
+    <!-- Tailwind CSS v3 via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              kaiti: ["STKaiti", "KaiTi", "DFKai-SB", "serif"],
+            },
+            colors: {
+              jade: {
+                100: "#d6fff4",
+                300: "#9ef0d6",
+                500: "#5ad1b2",
+                700: "#2a9c7f",
+              },
+              gold: {
+                300: "#f6e3a2",
+                500: "#f1c96b",
+                700: "#c99b3b",
+              },
+            },
+            boxShadow: {
+              "inner-glow": "0 0 18px rgba(244, 244, 245, 0.6)",
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="min-h-screen bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 text-slate-100">
+    <div
+      class="flex flex-col md:flex-row items-stretch justify-center gap-4 md:gap-6 p-3 md:p-6 max-w-6xl mx-auto"
+    >
+      <!-- Game Wrapper -->
+      <div class="relative flex-1 rounded-3xl overflow-hidden shadow-2xl shadow-slate-900/60">
+        <!-- Canvas container to preserve aspect ratio -->
+        <div class="relative w-full" id="game-container">
+          <canvas id="game-canvas" class="block w-full h-full touch-none"></canvas>
+
+          <!-- Mobile hint overlay -->
+          <div
+            id="mobile-hints"
+            class="pointer-events-none absolute inset-x-0 bottom-4 flex justify-between px-6 text-xs md:text-sm text-slate-100/80 font-kaiti"
+          >
+            <div class="flex flex-col items-start gap-1">
+              <span class="px-3 py-1 rounded-full bg-slate-900/60 border border-slate-100/20">
+                左半屏：滑铲
+              </span>
+            </div>
+            <div class="flex flex-col items-end gap-1">
+              <span class="px-3 py-1 rounded-full bg-slate-900/60 border border-slate-100/20">
+                右半屏：跳跃（二段）
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Distance and score floating UI -->
+        <div
+          class="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 flex gap-4 text-sm md:text-base font-kaiti"
+        >
+          <div
+            class="px-3 py-1 rounded-full bg-slate-900/60 border border-gold-500/80 shadow-inner-glow"
+          >
+            <span class="text-gold-300 drop-shadow">距离：</span>
+            <span id="distance-text" class="text-gold-500 drop-shadow-md">0 m</span>
+          </div>
+          <div
+            class="px-3 py-1 rounded-full bg-slate-900/60 border border-jade-500/80 shadow-inner-glow"
+          >
+            <span class="text-jade-100 drop-shadow">灵气：</span>
+            <span id="score-text" class="text-jade-300 drop-shadow-md">0</span>
+          </div>
+        </div>
+
+        <!-- Achievement toast -->
+        <div
+          id="achievement-toast"
+          class="pointer-events-none invisible opacity-0 transition-all duration-500 ease-out absolute left-1/2 -translate-x-1/2 top-16"
+        >
+          <div
+            class="px-4 py-2 rounded-full bg-slate-900/80 border border-gold-500/70 shadow-lg shadow-amber-500/40 font-kaiti text-sm md:text-base flex items-center gap-2"
+          >
+            <span class="text-gold-300">成就达成：</span>
+            <span id="achievement-text" class="text-gold-100"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar UI -->
+      <aside
+        class="w-full md:w-72 lg:w-80 rounded-3xl border border-slate-100/20 bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-slate-900/80 relative overflow-hidden"
+      >
+        <!-- Cloud border decoration -->
+        <div
+          class="pointer-events-none absolute -inset-8 opacity-40 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_60%),radial-gradient(circle_at_bottom,_rgba(125,211,252,0.09),_transparent_55%)]"
+        ></div>
+
+        <div class="relative z-10 p-4 md:p-5 flex flex-col gap-4">
+          <header class="flex flex-col gap-1">
+            <h1
+              class="text-2xl md:text-3xl font-kaiti tracking-wider text-gold-300 drop-shadow-[0_0_12px_rgba(248,250,252,0.7)]"
+            >
+              仙途酷跑
+            </h1>
+            <p class="text-xs md:text-sm text-slate-200/80 leading-relaxed">
+              左手御风滑铲，右手踏云飞跃。收集灵气、斩妖除魔，于万仞仙山间一往无前。
+            </p>
+          </header>
+
+          <section class="space-y-2 text-xs md:text-sm">
+            <h2 class="font-kaiti text-slate-100/90">操作说明</h2>
+            <ul class="space-y-1 text-slate-200/80">
+              <li>· 空格 / W / 上：跳跃（支持二段跳）</li>
+              <li>· S / 下：滑铲</li>
+              <li>· J：发射飞剑（自动与手动可叠加）</li>
+            </ul>
+          </section>
+
+          <section class="grid grid-cols-2 gap-2 text-xs md:text-sm">
+            <div class="rounded-2xl bg-slate-900/70 border border-slate-100/10 p-2.5 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="font-kaiti text-gold-300">状态</span>
+                <span
+                  id="state-pill"
+                  class="px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-widest bg-emerald-500/10 text-emerald-300 border border-emerald-400/40"
+                  >准备</span
+                >
+              </div>
+              <div class="flex justify-between text-slate-200/80">
+                <span>速度</span>
+                <span id="speed-text">0</span>
+              </div>
+              <div class="flex justify-between text-slate-200/80">
+                <span>已行</span>
+                <span id="meters-text">0 m</span>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-slate-900/70 border border-slate-100/10 p-2.5 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="font-kaiti text-jade-200">法宝</span>
+              </div>
+              <div class="flex justify-between text-slate-200/80">
+                <span>御剑飞行</span>
+                <span id="buff-sword-text">未激活</span>
+              </div>
+              <div class="flex justify-between text-slate-200/80">
+                <span>罡气护盾</span>
+                <span id="buff-shield-text">未激活</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Achievements preview -->
+          <section class="space-y-1 text-xs md:text-sm">
+            <h2 class="font-kaiti text-slate-100/90">成就一览</h2>
+            <ul class="space-y-1 text-slate-200/80" id="achievement-list">
+              <li data-key="rookie">◻ 初出茅庐：距离 &gt; 500</li>
+              <li data-key="strictCultivator">◻ 严厉修士：击败敌人 ≥ 100</li>
+              <li data-key="doubleMaster">◻ 凌空虚渡：二段跳 ≥ 20</li>
+              <li data-key="lightBody">◻ 身轻如燕：无坠落且距离 ≥ 1000</li>
+              <li data-key="collector">◻ 法宝收集者：收集飞剑 ≥ 3</li>
+            </ul>
+          </section>
+
+          <!-- Buttons -->
+          <section class="mt-1 flex flex-wrap gap-2">
+            <button
+              id="btn-start"
+              class="flex-1 px-4 py-2 rounded-full bg-gradient-to-r from-jade-500 to-jade-300 text-slate-900 font-kaiti text-sm shadow-lg shadow-emerald-500/40 border border-jade-100/70 hover:from-jade-400 hover:to-jade-200 hover:shadow-emerald-300/60 transition"
+            >
+              开始修行
+            </button>
+            <button
+              id="btn-restart"
+              class="flex-1 px-4 py-2 rounded-full bg-slate-800/80 text-slate-100 font-kaiti text-sm border border-slate-100/20 hover:border-jade-300/70 hover:text-jade-100 hover:shadow-lg hover:shadow-slate-900/60 transition"
+            >
+              重来一次
+            </button>
+          </section>
+        </div>
+
+        <!-- Result modal -->
+        <div
+          id="result-modal"
+          class="pointer-events-none opacity-0 invisible transition-all duration-300 ease-out absolute inset-0 flex items-center justify-center"
+        >
+          <div
+            class="w-11/12 max-w-sm rounded-3xl bg-slate-900/95 border border-gold-500/60 shadow-[0_0_40px_rgba(251,191,36,0.4)] p-5 md:p-6 relative overflow-hidden"
+          >
+            <!-- Crane decoration -->
+            <div
+              class="pointer-events-none absolute -right-10 -top-10 w-28 h-28 bg-[radial-gradient(circle_at_30%_30%,rgba(248,250,252,0.9),transparent_60%)] opacity-60"
+            ></div>
+            <h2
+              class="relative z-10 font-kaiti text-2xl text-gold-200 mb-1 drop-shadow-[0_0_18px_rgba(250,250,210,0.9)]"
+            >
+              修行小结
+            </h2>
+            <p class="relative z-10 text-xs md:text-sm text-slate-100/80 mb-3">
+              鹤影掠云，百炼终成。再战一遭，必有精进。
+            </p>
+            <div class="relative z-10 space-y-1.5 text-xs md:text-sm text-slate-100/85">
+              <div class="flex justify-between">
+                <span>总行程</span>
+                <span id="result-distance">0 m</span>
+              </div>
+              <div class="flex justify-between">
+                <span>灵气总数</span>
+                <span id="result-score">0</span>
+              </div>
+              <div class="flex justify-between">
+                <span>击败敌人</span>
+                <span id="result-enemies">0</span>
+              </div>
+              <div class="flex justify-between">
+                <span>二段起跳</span>
+                <span id="result-double">0</span>
+              </div>
+            </div>
+
+            <div class="relative z-10 mt-3 flex flex-wrap gap-2">
+              <button
+                id="btn-modal-restart"
+                class="flex-1 px-4 py-2 rounded-full bg-gradient-to-r from-jade-500 to-jade-300 text-slate-900 font-kaiti text-sm shadow-lg shadow-emerald-500/40 border border-jade-100/70 hover:from-jade-400 hover:to-jade-200 transition"
+              >
+                继续修行
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
+
