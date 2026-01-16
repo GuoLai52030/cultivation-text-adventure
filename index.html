@@ -1,0 +1,1478 @@
+toolName: todo_write
+            
+status: success
+          
+Todos updated: 3 items
+          
+
+        
+            
+toolName: todo_write
+            
+status: success
+          
+Todos updated: 3 items
+          
+
+        
+            
+toolName: todo_write
+            
+status: success
+          
+Todos updated: 3 items
+          
+
+        
+            
+toolName: todo_write
+            
+status: success
+          
+Todos updated: 3 items
+          
+下面是一份可以直接保存为 `index.html` 打开的单文件示例，实现了你要求的大部分机制和视觉效果（Canvas + Vanilla JS + Tailwind v3 CDN），并在碰撞和粒子系统等关键位置加入了详细中文注释。
+
+你可以先直接使用，后面如果想继续扩展（BOSS、更多道具等）我也可以再帮你进化。
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>修仙弹幕 · 剑气纵横</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Tailwind CSS v3 CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* 自定义古风配色与动画 */
+    :root {
+      --color-dai-blue: #1b2a49;
+      --color-zhusha: #d93232;
+      --color-liujin: #fbbf24;
+    }
+
+    body {
+      background: radial-gradient(circle at top, #0f172a 0%, #020617 60%, #000 100%);
+      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    /* 半透明磨砂+金边 */
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(251, 191, 36, 0.7);
+      box-shadow: 0 0 25px rgba(251, 191, 36, 0.4);
+    }
+
+    /* 成就提示动画：右侧滑入再淡出 */
+    @keyframes achievement-slide-in {
+      0% {
+        opacity: 0;
+        transform: translateX(120%);
+      }
+      20% {
+        opacity: 1;
+        transform: translateX(0);
+      }
+      80% {
+        opacity: 1;
+        transform: translateX(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateX(120%);
+      }
+    }
+
+    .achievement-toast {
+      animation: achievement-slide-in 3.2s ease-in-out forwards;
+    }
+
+    /* 警告闪红边效果 */
+    .screen-warning {
+      box-shadow: inset 0 0 80px rgba(248, 113, 113, 0.9);
+      transition: box-shadow 0.2s ease-out;
+    }
+
+    /* 虚拟摇杆 */
+    .joystick-base {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 9999px;
+      border: 1px solid rgba(148, 163, 184, 0.7);
+      backdrop-filter: blur(10px);
+    }
+
+    .joystick-stick {
+      background: rgba(148, 163, 184, 0.85);
+      border-radius: 9999px;
+      transform: translate(-50%, -50%);
+      touch-action: none;
+    }
+
+    /* 模态遮罩淡入 */
+    .modal-backdrop {
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.95));
+      backdrop-filter: blur(12px);
+    }
+
+    /* 防止文本选中影响体验 */
+    canvas, button {
+      user-select: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center">
+  <!-- 主容器 -->
+  <div id="game-container"
+       class="relative w-full max-w-5xl aspect-[16/9] glass-panel rounded-2xl overflow-hidden border border-yellow-400">
+    <!-- Canvas 背景 -->
+    <canvas id="game-canvas" class="absolute inset-0 w-full h-full"></canvas>
+
+    <!-- HUD 顶部信息栏 -->
+    <div class="pointer-events-none absolute top-3 left-3 right-3 flex justify-between items-center text-sm md:text-base">
+      <!-- 左侧：灵石、生命、境界 -->
+      <div class="pointer-events-auto glass-panel rounded-xl px-4 py-2 flex items-center gap-4">
+        <div class="flex items-center gap-1">
+          <span class="text-amber-300 font-semibold">灵石</span>
+          <span id="score" class="text-amber-100 font-bold">0</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-rose-300 font-semibold">生命</span>
+          <div id="lives" class="flex gap-1">
+            <!-- 动态心形 -->
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-sky-300 font-semibold">境界</span>
+          <span id="level" class="text-sky-100 font-bold">1</span>
+        </div>
+      </div>
+
+      <!-- 右侧：当前道具 -->
+      <div class="pointer-events-auto glass-panel rounded-xl px-4 py-2 flex items-center gap-4">
+        <div class="flex flex-col">
+          <span class="text-xs text-slate-300">当前道具</span>
+          <div class="flex gap-2 text-xs">
+            <span id="power-spread"
+                  class="px-2 py-1 rounded-md border border-emerald-400/60 text-emerald-200/70">三向符咒：无</span>
+            <span id="power-shield"
+                  class="px-2 py-1 rounded-md border border-cyan-400/60 text-cyan-200/70">罡气护盾：无</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧操作说明 + 道具图鉴（宽屏可见） -->
+    <aside
+      class="hidden lg:flex pointer-events-none absolute top-24 bottom-4 right-3 w-60 glass-panel rounded-2xl px-4 py-3 flex-col text-xs space-y-3">
+      <div class="pointer-events-auto">
+        <h2 class="text-amber-200 font-semibold mb-1">御剑操控</h2>
+        <p class="text-slate-300">W / ↑：跳跃</p>
+        <p class="text-slate-300">A / ←：左移</p>
+        <p class="text-slate-300">D / →：右移</p>
+        <p class="text-slate-300">空格：发射飞剑</p>
+        <p class="text-slate-300">P：暂停</p>
+      </div>
+      <div class="border-t border-slate-500/60 pt-2 pointer-events-auto">
+        <h2 class="text-amber-200 font-semibold mb-1">道具图鉴</h2>
+        <p class="text-emerald-300">
+          三向符咒：<span class="text-slate-200">飞剑三向扩散，±30° 剑气。</span>
+        </p>
+        <p class="text-cyan-300">
+          罡气护盾：<span class="text-slate-200">旋转法阵护身，可抵御一次伤害。</span>
+        </p>
+      </div>
+      <div class="border-t border-slate-500/60 pt-2 pointer-events-auto">
+        <h2 class="text-amber-200 font-semibold mb-1">惩罚机制</h2>
+        <p class="text-slate-300">
+          敌人穿过屏幕左侧：<span class="text-rose-300 font-semibold">扣分并触发红光警告</span>
+        </p>
+      </div>
+    </aside>
+
+    <!-- 成就提示容器 -->
+    <div id="achievement-container"
+         class="pointer-events-none absolute top-1/4 right-3 flex flex-col gap-2 z-20">
+      <!-- 动态成就提示 -->
+    </div>
+
+    <!-- 虚拟摇杆（移动端可用） -->
+    <div class="pointer-events-none absolute inset-0 flex justify-between items-end px-4 pb-5 md:hidden">
+      <!-- 左侧摇杆 -->
+      <div id="joystick-area" class="pointer-events-auto relative w-28 h-28 joystick-base">
+        <div id="joystick-stick"
+             class="absolute left-1/2 top-1/2 w-12 h-12 joystick-stick"></div>
+      </div>
+
+      <!-- 右侧按钮区 -->
+      <div class="pointer-events-auto flex flex-col gap-3 items-end">
+        <button id="btn-fire"
+                class="w-16 h-16 rounded-full bg-amber-400/80 text-slate-900 font-bold text-sm shadow-lg active:scale-95">
+          剑
+        </button>
+        <button id="btn-pause"
+                class="w-14 h-14 rounded-full bg-slate-200/80 text-slate-900 font-semibold text-xs shadow-lg active:scale-95">
+          暂停
+        </button>
+      </div>
+    </div>
+
+    <!-- 开始 / 暂停 / 结算 模态框 -->
+    <div id="modal-overlay"
+         class="absolute inset-0 flex items-center justify-center modal-backdrop z-30 hidden">
+      <div id="modal-panel"
+           class="glass-panel rounded-3xl px-8 py-6 w-80 max-w-full text-center transform transition-all duration-300 scale-95 opacity-0">
+        <h1 id="modal-title" class="text-2xl font-bold text-amber-200 mb-2">修仙弹幕·剑气纵横</h1>
+        <p id="modal-message" class="text-slate-200 text-sm mb-4">
+          凡人踏入修仙界，御剑破空，万邪来袭——准备好了吗？
+        </p>
+        <div id="modal-extra" class="text-xs text-slate-300 mb-4">
+          WASD / 方向键移动，空格发射飞剑，P 暂停。
+        </div>
+        <button id="modal-button"
+                class="mt-1 inline-flex items-center justify-center px-6 py-2 rounded-full bg-amber-400 text-slate-900 font-semibold shadow-lg shadow-amber-500/40 hover:bg-amber-300 transition">
+          开始修行
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tailwind on CDN 可以在这里扩展主题（如果需要）
+    // tailwind.config = { theme: { extend: {} } };
+
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('game-container');
+
+    // HUD 元素
+    const scoreEl = document.getElementById('score');
+    const livesEl = document.getElementById('lives');
+    const levelEl = document.getElementById('level');
+    const powerSpreadEl = document.getElementById('power-spread');
+    const powerShieldEl = document.getElementById('power-shield');
+
+    // 模态框元素
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalPanel = document.getElementById('modal-panel');
+    const modalTitle = document.getElementById('modal-title');
+    const modalMessage = document.getElementById('modal-message');
+    const modalExtra = document.getElementById('modal-extra');
+    const modalButton = document.getElementById('modal-button');
+
+    // 成就提示容器
+    const achievementContainer = document.getElementById('achievement-container');
+
+    // 虚拟摇杆与按钮
+    const joystickArea = document.getElementById('joystick-area');
+    const joystickStick = document.getElementById('joystick-stick');
+    const btnFire = document.getElementById('btn-fire');
+    const btnPause = document.getElementById('btn-pause');
+
+    // 画布尺寸自适应容器
+    function resizeCanvas() {
+      const rect = container.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // 基础向量工具
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function randomRange(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    // ------------ 游戏状态 ------------
+    const gameState = {
+      running: false,
+      paused: false,
+      gameOver: false,
+      lastTime: 0,
+      score: 0,
+      level: 1,
+      levelTimer: 0,
+      levelInterval: 15000, // 每 15 秒尝试升级
+      lives: 3,
+      killCount: 0,
+      enemiesEscaped: 0,
+      lastEnemyEscapeTime: 0,
+      noLeakTimer: 0,
+      noLeakActive: true,
+      shieldTriggeredAtOneHp: false,
+      holdSpread: false,
+      holdShield: false,
+      lastShotTime: 0,
+      shotInterval: 220, // 毫秒
+      backgroundOffset: 0,
+      warningFlashUntil: 0,
+    };
+
+    // ------------ 输入控制 ------------
+    const keys = {
+      left: false,
+      right: false,
+      up: false,
+      fire: false,
+    };
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = true;
+      if (e.code === 'Space') {
+        keys.fire = true;
+        e.preventDefault();
+      }
+      if (e.code === 'KeyP') {
+        togglePause();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = false;
+      if (e.code === 'Space') keys.fire = false;
+    });
+
+    // ------------ 移动端虚拟摇杆与按钮逻辑 ------------
+    let joystickTouchId = null;
+    let joystickCenter = { x: 0, y: 0 };
+    let joystickRadius = 50;
+
+    if (joystickArea) {
+      joystickArea.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        joystickTouchId = touch.identifier;
+        const rect = joystickArea.getBoundingClientRect();
+        joystickCenter.x = rect.left + rect.width / 2;
+        joystickCenter.y = rect.top + rect.height / 2;
+        handleJoystickMove(touch);
+      }, { passive: false });
+
+      joystickArea.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touch = Array.from(e.changedTouches).find(t => t.identifier === joystickTouchId);
+        if (touch) handleJoystickMove(touch);
+      }, { passive: false });
+
+      joystickArea.addEventListener('touchend', resetJoystick, { passive: false });
+      joystickArea.addEventListener('touchcancel', resetJoystick, { passive: false });
+    }
+
+    function handleJoystickMove(touch) {
+      const dx = touch.clientX - joystickCenter.x;
+      const dy = touch.clientY - joystickCenter.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const clampedDist = Math.min(dist, joystickRadius);
+      const angleX = dx / (joystickRadius || 1);
+      const angleY = dy / (joystickRadius || 1);
+
+      // 左右移动依赖 X 轴
+      keys.left = angleX < -0.2;
+      keys.right = angleX > 0.2;
+      // 向上轻微表示跳跃
+      keys.up = angleY < -0.5;
+
+      // 更新摇杆小圆位置
+      const stickX = joystickCenter.x + (dist === 0 ? 0 : dx / dist * clampedDist);
+      const stickY = joystickCenter.y + (dist === 0 ? 0 : dy / dist * clampedDist);
+      joystickStick.style.left = (stickX - joystickArea.getBoundingClientRect().left) + 'px';
+      joystickStick.style.top = (stickY - joystickArea.getBoundingClientRect().top) + 'px';
+    }
+
+    function resetJoystick(e) {
+      if (e) e.preventDefault();
+      keys.left = keys.right = keys.up = false;
+      joystickTouchId = null;
+      joystickStick.style.left = '50%';
+      joystickStick.style.top = '50%';
+    }
+
+    if (btnFire) {
+      btnFire.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys.fire = true;
+      }, { passive: false });
+      btnFire.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys.fire = false;
+      }, { passive: false });
+    }
+
+    if (btnPause) {
+      btnPause.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        togglePause();
+      }, { passive: false });
+    }
+
+    // ------------ 实体基类 ------------
+    class Entity {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.dead = false;
+      }
+      update(dt) {}
+      draw(ctx) {}
+    }
+
+    // ------------ 粒子类 ------------
+    class Particle extends Entity {
+      constructor(x, y, vx, vy, radius, life, color) {
+        super(x, y);
+        this.vx = vx;
+        this.vy = vy;
+        this.radius = radius;
+        this.life = life;      // 剩余寿命（秒）
+        this.maxLife = life;   // 最大寿命，用于计算透明度
+        this.color = color;
+      }
+
+      update(dt) {
+        // 粒子简单物理：速度衰减 + 重力影响
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.vy += 200 * dt; // 类似重力加速度
+        this.vx *= 0.98;
+        this.vy *= 0.98;
+
+        this.life -= dt;
+        if (this.life <= 0) {
+          this.dead = true;
+        }
+      }
+
+      draw(ctx) {
+        if (this.life <= 0) return;
+        const alpha = this.life / this.maxLife; // 寿命比例控制透明度
+
+        // 使用 Canvas shadowBlur 制作发光效果
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = this.color;
+
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // ------------ 玩家类 ------------
+    class Player extends Entity {
+      constructor() {
+        const startX = canvas.width * 0.18;
+        const groundY = canvas.height * 0.75;
+        super(startX, groundY);
+
+        this.vx = 0;
+        this.vy = 0;
+        this.speed = 260;
+        this.jumpVelocity = -420;
+        this.width = 36;
+        this.height = 50;
+        this.onGround = true;
+        this.color = '#4ade80';
+      }
+
+      reset() {
+        this.x = canvas.width * 0.18;
+        this.y = canvas.height * 0.75;
+        this.vx = 0;
+        this.vy = 0;
+        this.onGround = true;
+      }
+
+      shoot(projectiles) {
+        const now = performance.now();
+        if (now - gameState.lastShotTime < gameState.shotInterval) return;
+        gameState.lastShotTime = now;
+
+        const baseSpeed = 520;
+        const originX = this.x + this.width * 0.6;
+        const originY = this.y - this.height * 0.2;
+
+        if (gameState.holdSpread) {
+          // 三向符咒：0°, ±30°
+          const angles = [0, -30, 30].map(a => a * Math.PI / 180);
+          for (const ang of angles) {
+            const vx = Math.cos(ang) * baseSpeed;
+            const vy = Math.sin(ang) * baseSpeed;
+            projectiles.push(new Projectile(originX, originY, vx, vy, 8, '#7dd3fc', 'player'));
+          }
+        } else {
+          projectiles.push(new Projectile(originX, originY, baseSpeed, 0, 10, '#bfdbfe', 'player'));
+        }
+      }
+
+      update(dt) {
+        const groundY = canvas.height * 0.75;
+
+        // 左右移动
+        let targetVx = 0;
+        if (keys.left) targetVx -= this.speed;
+        if (keys.right) targetVx += this.speed;
+
+        // 简单平滑
+        this.vx = targetVx;
+
+        // 跳跃
+        if (keys.up && this.onGround) {
+          this.vy = this.jumpVelocity;
+          this.onGround = false;
+        }
+
+        // 重力
+        this.vy += 980 * dt;
+
+        // 位置更新
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+
+        // 地面碰撞
+        if (this.y > groundY) {
+          this.y = groundY;
+          this.vy = 0;
+          this.onGround = true;
+        }
+
+        // 水平边界限制
+        this.x = clamp(this.x, 20, canvas.width * 0.5);
+      }
+
+      draw(ctx) {
+        ctx.save();
+        // 玩家整体发光
+        ctx.shadowBlur = 25;
+        ctx.shadowColor = '#4ade80';
+
+        // 身体（发光法袍）
+        const w = this.width;
+        const h = this.height;
+
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.roundRect(this.x - w / 2, this.y - h, w, h, 10);
+        ctx.fill();
+
+        // 头部
+        ctx.fillStyle = '#facc15';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y - h - 12, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 剑影（身后剑气）
+        ctx.strokeStyle = '#a5f3fc';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(this.x - w / 2, this.y - h * 0.6);
+        ctx.lineTo(this.x - w, this.y - h * 0.9);
+        ctx.stroke();
+
+        // 若持有护盾，在周身绘制旋转法阵
+        if (gameState.holdShield) {
+          const time = performance.now() * 0.006;
+          const radius = Math.max(w, h) * 0.9;
+          ctx.save();
+          ctx.translate(this.x, this.y - h * 0.5);
+          ctx.rotate(time * 0.5);
+          ctx.strokeStyle = '#22d3ee';
+          ctx.lineWidth = 2.5;
+          ctx.shadowBlur = 30;
+          ctx.shadowColor = '#22d3ee';
+
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.beginPath();
+          for (let i = 0; i < 4; i++) {
+            const ang = (i * Math.PI / 2);
+            ctx.moveTo(Math.cos(ang) * radius, Math.sin(ang) * radius);
+            ctx.lineTo(Math.cos(ang + Math.PI / 4) * radius * 0.7, Math.sin(ang + Math.PI / 4) * radius * 0.7);
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
+      // 获取玩家的碰撞矩形，用于矩形碰撞检测
+      getBoundingBox() {
+        return {
+          x: this.x - this.width / 2,
+          y: this.y - this.height,
+          width: this.width,
+          height: this.height,
+        };
+      }
+    }
+
+    // ------------ 子弹类 ------------
+    class Projectile extends Entity {
+      constructor(x, y, vx, vy, radius, color, owner) {
+        super(x, y);
+        this.vx = vx;
+        this.vy = vy;
+        this.radius = radius;
+        this.color = color;
+        this.owner = owner; // 'player' or 'enemy'
+      }
+
+      update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+
+        // 如果飞出画布范围，标记为死亡
+        if (this.x < -100 || this.x > canvas.width + 100 || this.y < -100 || this.y > canvas.height + 100) {
+          this.dead = true;
+        }
+      }
+
+      draw(ctx) {
+        ctx.save();
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = this.color;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // ------------ 敌人类 ------------
+    class Enemy extends Entity {
+      constructor(type, speedMultiplier, hpMultiplier) {
+        const spawnYBase = canvas.height * 0.75;
+        const yVariance = canvas.height * 0.2;
+        const y = spawnYBase - yVariance * Math.random();
+        const x = canvas.width + 40;
+        super(x, y);
+
+        this.type = type; // 'mortal' | 'monster' | 'evil'
+        this.speedMultiplier = speedMultiplier;
+        this.hpMultiplier = hpMultiplier;
+
+        // 不同类型基础属性
+        if (type === 'mortal') {
+          this.width = 34;
+          this.height = 44;
+          this.baseSpeed = 120;
+          this.hp = 20 * hpMultiplier;
+          this.color = '#f97316';
+        } else if (type === 'monster') {
+          this.width = 42;
+          this.height = 50;
+          this.baseSpeed = 150;
+          this.hp = 35 * hpMultiplier;
+          this.color = '#22c55e';
+          this.waveAmplitude = randomRange(30, 60);
+          this.waveFrequency = randomRange(1.2, 1.8);
+          this.spawnTime = performance.now();
+        } else { // 'evil'
+          this.width = 40;
+          this.height = 50;
+          this.baseSpeed = 170;
+          this.hp = 45 * hpMultiplier;
+          this.color = '#a855f7';
+          this.shootCooldown = randomRange(1.4, 2.2);
+          this.timeSinceShot = 0;
+        }
+      }
+
+      update(dt, projectiles) {
+        // 基本向左移动
+        const speed = this.baseSpeed * this.speedMultiplier;
+        this.x -= speed * dt;
+
+        // 怪物：曲线移动（在垂直方向进行正弦偏移）
+        if (this.type === 'monster') {
+          const t = (performance.now() - this.spawnTime) / 1000;
+          const offsetY = Math.sin(t * this.waveFrequency * 2 * Math.PI) * this.waveAmplitude;
+          this.y += offsetY * dt * 4;
+        }
+
+        // 邪修：定时发射子弹
+        if (this.type === 'evil') {
+          this.timeSinceShot += dt;
+          if (this.timeSinceShot >= this.shootCooldown) {
+            this.timeSinceShot = 0;
+            this.shootCooldown = randomRange(1.1, 1.9);
+            this.shoot(projectiles);
+          }
+        }
+
+        // 如果完全离开屏幕左侧，标记为死亡并增加逃脱计数（由外部处理惩罚）
+        if (this.x + this.width < 0) {
+          this.dead = true;
+          gameState.enemiesEscaped++;
+          gameState.lastEnemyEscapeTime = performance.now();
+          triggerWarningFlash();
+          // 敌人逃脱扣分
+          gameState.score = Math.max(0, gameState.score - 20);
+          updateHUD();
+          gameState.noLeakActive = false; // 断开“未漏敌人”计时
+          gameState.noLeakTimer = 0;
+        }
+      }
+
+      shoot(projectiles) {
+        const originX = this.x - this.width * 0.2;
+        const originY = this.y - this.height * 0.5;
+        const speed = 260 + gameState.level * 12;
+        const angleToPlayer = Math.atan2(player.y - originY, player.x - originX);
+        const vx = Math.cos(angleToPlayer) * speed;
+        const vy = Math.sin(angleToPlayer) * speed;
+        projectiles.push(new Projectile(originX, originY, vx, vy, 7, '#f97373', 'enemy'));
+      }
+
+      draw(ctx) {
+        ctx.save();
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = this.color;
+
+        const x = this.x;
+        const y = this.y;
+        const w = this.width;
+        const h = this.height;
+
+        // 身体
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.roundRect(x - w / 2, y - h, w, h, 10);
+        ctx.fill();
+
+        // 头部
+        ctx.fillStyle = '#e5e7eb';
+        ctx.beginPath();
+        ctx.arc(x, y - h - 10, 11, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 不同类型额外特征
+        if (this.type === 'mortal') {
+          // 凡人：普通修士
+          ctx.strokeStyle = '#fed7aa';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x, y - h * 0.6);
+          ctx.lineTo(x + w * 0.4, y - h * 0.3);
+          ctx.stroke();
+        } else if (this.type === 'monster') {
+          // 怪物：长角与爪子
+          ctx.strokeStyle = '#bbf7d0';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x - 8, y - h - 16);
+          ctx.lineTo(x - 16, y - h - 26);
+          ctx.moveTo(x + 8, y - h - 16);
+          ctx.lineTo(x + 16, y - h - 26);
+          ctx.stroke();
+        } else {
+          // 邪修：邪气环绕
+          ctx.strokeStyle = '#e879f9';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x, y - h * 0.5, w * 0.7, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      getBoundingBox() {
+        return {
+          x: this.x - this.width / 2,
+          y: this.y - this.height,
+          width: this.width,
+          height: this.height,
+        };
+      }
+    }
+
+    // ------------ 道具类 ------------
+    class PowerUp extends Entity {
+      constructor(kind) {
+        const x = canvas.width + 40;
+        const y = randomRange(canvas.height * 0.3, canvas.height * 0.7);
+        super(x, y);
+        this.kind = kind; // 'spread' | 'shield'
+        this.radius = 16;
+        this.speed = 140;
+      }
+
+      update(dt) {
+        this.x -= this.speed * dt;
+        if (this.x + this.radius < 0) {
+          this.dead = true;
+        }
+      }
+
+      draw(ctx) {
+        ctx.save();
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = this.kind === 'spread' ? '#34d399' : '#22d3ee';
+
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        const gradient = ctx.createRadialGradient(
+          this.x, this.y, 2,
+          this.x, this.y, this.radius
+        );
+        if (this.kind === 'spread') {
+          gradient.addColorStop(0, '#bbf7d0');
+          gradient.addColorStop(1, '#22c55e');
+        } else {
+          gradient.addColorStop(0, '#bae6fd');
+          gradient.addColorStop(1, '#0ea5e9');
+        }
+        ctx.fillStyle = gradient;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(251,191,36,0.9)';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius + 4, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+    }
+
+    // ------------ 成就系统 ------------
+    class AchievementManager {
+      constructor() {
+        this.achievements = {
+          firstBlood: { id: 'firstBlood', unlocked: false, name: '初出茅庐', desc: '击杀 10 个敌人。' },
+          strictCultivator: { id: 'strictCultivator', unlocked: false, name: '修仙界最严厉的修士', desc: '关卡达到 5 级。' },
+          omnipotent: { id: 'omnipotent', unlocked: false, name: '法力无边', desc: '同时持有两种道具。' },
+          lastMomentShield: { id: 'lastMomentShield', unlocked: false, name: '千钧一发', desc: '生命值为 1 时触发护盾。' },
+          noLeak: { id: 'noLeak', unlocked: false, name: '剑气纵横', desc: '10 秒内未漏掉任何敌人。' },
+        };
+      }
+
+      // 检查并更新各种成就
+      update(dt) {
+        // 初出茅庐：击杀 10 个敌人
+        if (!this.achievements.firstBlood.unlocked && gameState.killCount >= 10) {
+          this.unlock('firstBlood');
+        }
+
+        // 修仙界最严厉的修士：关卡达到 5 级
+        if (!this.achievements.strictCultivator.unlocked && gameState.level >= 5) {
+          this.unlock('strictCultivator');
+        }
+
+        // 法力无边：同时持有两种道具
+        if (!this.achievements.omnipotent.unlocked &&
+          gameState.holdSpread && gameState.holdShield) {
+          this.unlock('omnipotent');
+        }
+
+        // 剑气纵横：10 秒内未漏掉任何敌人
+        // noLeakTimer 的计数逻辑在游戏循环外部
+        if (!this.achievements.noLeak.unlocked && gameState.noLeakTimer >= 10) {
+          this.unlock('noLeak');
+        }
+      }
+
+      // 在外部合适的时机调用：生命值为 1 且使用护盾抵消伤害时
+      triggerLastMomentShield() {
+        if (!this.achievements.lastMomentShield.unlocked) {
+          this.unlock('lastMomentShield');
+        }
+      }
+
+      unlock(key) {
+        const a = this.achievements[key];
+        if (!a || a.unlocked) return;
+        a.unlocked = true;
+        this.showToast(a.name, a.desc);
+      }
+
+      showToast(title, desc) {
+        const div = document.createElement('div');
+        div.className =
+          'achievement-toast glass-panel rounded-xl px-4 py-2 text-xs text-left flex flex-col gap-1 border border-amber-300/80';
+        div.innerHTML = `
+          <div class="text-amber-300 font-semibold">成就解锁：${title}</div>
+          <div class="text-slate-200">${desc}</div>
+        `;
+        achievementContainer.appendChild(div);
+        setTimeout(() => {
+          if (div.parentElement) {
+            achievementContainer.removeChild(div);
+          }
+        }, 3200);
+      }
+
+      reset() {
+        Object.values(this.achievements).forEach(a => a.unlocked = false);
+      }
+    }
+
+    const achievementManager = new AchievementManager();
+
+    // ------------ 碰撞检测工具 ------------
+    /**
+     * 矩形与矩形碰撞检测
+     * 说明：
+     *  - 利用轴对齐包围盒（AABB）判断两个矩形是否有重叠。
+     *  - 条件：在 X 轴和 Y 轴上均有区间交集，即视为碰撞发生。
+     */
+    function rectRectCollision(a, b) {
+      return !(
+        a.x + a.width < b.x ||
+        a.x > b.x + b.width ||
+        a.y + a.height < b.y ||
+        a.y > b.y + b.height
+      );
+    }
+
+    /**
+     * 圆形与矩形碰撞检测
+     * 说明：
+     *  - 将圆心在 X/Y 方向分别「夹」到矩形内部最近的点。
+     *  - 再计算该最近点与圆心的距离是否小于等于半径。
+     *  - 原理：最近点必为真正最近的一个，如果最近点都超过半径，则圆与矩形一定不相交。
+     */
+    function circleRectCollision(circle, rect) {
+      const closestX = clamp(circle.x, rect.x, rect.x + rect.width);
+      const closestY = clamp(circle.y, rect.y, rect.y + rect.height);
+      const dx = circle.x - closestX;
+      const dy = circle.y - closestY;
+      const distanceSq = dx * dx + dy * dy;
+      return distanceSq <= circle.radius * circle.radius;
+    }
+
+    // ------------ 游戏世界集合 ------------
+    const player = new Player();
+    const enemies = [];
+    const projectiles = [];
+    const powerUps = [];
+    const particles = [];
+
+    // ------------ 背景绘制 ------------
+    function drawBackground(dt) {
+      const w = canvas.width;
+      const h = canvas.height;
+
+      // 背景偏移，用于视差滚动
+      gameState.backgroundOffset += dt * 20;
+
+      // 天空渐变
+      const gradient = ctx.createLinearGradient(0, 0, 0, h);
+      gradient.addColorStop(0, '#020617');
+      gradient.addColorStop(0.3, '#0f172a');
+      gradient.addColorStop(0.7, '#1f2937');
+      gradient.addColorStop(1, '#020617');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, w, h);
+
+      // 远山剪影
+      ctx.save();
+      ctx.fillStyle = '#020617';
+      ctx.beginPath();
+      ctx.moveTo(0, h * 0.7);
+      for (let x = 0; x <= w; x += 80) {
+        const yOffset = Math.sin((x / w) * Math.PI * 2 + gameState.backgroundOffset * 0.08) * 20;
+        ctx.lineTo(x, h * 0.7 - 40 + yOffset);
+      }
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // 云海（多层视差）
+      drawCloudLayer(0.25, 0.2, '#0f172a', 0.6);
+      drawCloudLayer(0.5, 0.35, '#111827', 0.8);
+      drawCloudLayer(0.8, 0.55, '#1e293b', 1.0);
+
+      // 前景“灵气”流动
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#22c55e';
+      const t = gameState.backgroundOffset * 0.4;
+      for (let i = 0; i < 3; i++) {
+        const y = h * 0.2 + i * 50 + Math.sin(t + i) * 10;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        for (let x = 0; x <= w; x += 40) {
+          const yOffset = Math.sin((x / w) * Math.PI * 2 + t + i) * 14;
+          ctx.lineTo(x, y + yOffset);
+        }
+        ctx.lineTo(w, y + 20);
+        ctx.lineTo(0, y + 20);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // 地面平台
+      ctx.save();
+      const groundY = canvas.height * 0.75;
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, groundY, w, h - groundY);
+      ctx.shadowBlur = 30;
+      ctx.shadowColor = '#22c55e';
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, groundY - 6, w, 6);
+      ctx.restore();
+    }
+
+    function drawCloudLayer(speedFactor, heightFactor, color, alpha) {
+      const w = canvas.width;
+      const h = canvas.height;
+      const offset = gameState.backgroundOffset * speedFactor;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      const baseY = h * heightFactor;
+
+      for (let i = -1; i < 4; i++) {
+        const cloudX = ((i * 220) - (offset * 40)) % (w + 220);
+        const cloudY = baseY + Math.sin((i + offset) * 0.8) * 10;
+        ctx.beginPath();
+        ctx.ellipse(cloudX, cloudY, 90, 30, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // ------------ HUD 更新 ------------
+    function updateHUD() {
+      scoreEl.textContent = gameState.score;
+      levelEl.textContent = gameState.level;
+
+      // 生命心形
+      livesEl.innerHTML = '';
+      for (let i = 0; i < gameState.lives; i++) {
+        const span = document.createElement('span');
+        span.textContent = '♥';
+        span.className = 'text-rose-400 text-base';
+        livesEl.appendChild(span);
+      }
+
+      powerSpreadEl.textContent = '三向符咒：' + (gameState.holdSpread ? '已激活' : '无');
+      powerShieldEl.textContent = '罡气护盾：' + (gameState.holdShield ? '已激活' : '无');
+    }
+
+    // ------------ 警告闪红 ------------
+    function triggerWarningFlash() {
+      const duration = 300; // 毫秒
+      gameState.warningFlashUntil = performance.now() + duration;
+      container.classList.add('screen-warning');
+      setTimeout(() => {
+        if (performance.now() > gameState.warningFlashUntil) {
+          container.classList.remove('screen-warning');
+        }
+      }, duration + 50);
+    }
+
+    // ------------ 粒子效果辅助函数 ------------
+
+    // 敌人死亡爆炸粒子
+    function spawnExplosion(x, y, baseColor) {
+      for (let i = 0; i < 22; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = randomRange(90, 260);
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+        const radius = randomRange(2, 4);
+        const life = randomRange(0.4, 0.9);
+        particles.push(new Particle(x, y, vx, vy, radius, life, baseColor));
+      }
+    }
+
+    // 全屏清屏粒子：用于关卡升级
+    function spawnClearScreenParticles() {
+      const w = canvas.width;
+      const h = canvas.height;
+      for (let i = 0; i < 160; i++) {
+        const x = Math.random() * w;
+        const y = Math.random() * h * 0.8;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = randomRange(50, 200);
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+        const radius = randomRange(1.5, 3.5);
+        const life = randomRange(0.6, 1.2);
+        const colors = ['#a5f3fc', '#fbbf24', '#4ade80'];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        particles.push(new Particle(x, y, vx, vy, radius, life, color));
+      }
+    }
+
+    // ------------ 关卡与敌人生成逻辑 ------------
+    let enemySpawnTimer = 0;
+    let enemySpawnInterval = 1.4; // 秒
+    let powerSpawnTimer = 0;
+    let powerSpawnInterval = 10;  // 秒
+
+    function updateSpawners(dt) {
+      // 根据分数和时间提升等级
+      gameState.levelTimer += dt;
+      if (gameState.levelTimer >= gameState.levelInterval) {
+        gameState.levelTimer = 0;
+        gameState.level++;
+        // 升级时：清空敌人与敌方子弹，并产生清屏粒子
+        for (const e of enemies) {
+          spawnExplosion(e.x, e.y, e.color);
+        }
+        enemies.length = 0;
+        for (const p of [...projectiles]) {
+          if (p.owner === 'enemy') {
+            spawnExplosion(p.x, p.y, '#f97373');
+          }
+        }
+        // 仅保留玩家子弹
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+          if (projectiles[i].owner === 'enemy') {
+            projectiles.splice(i, 1);
+          }
+        }
+
+        spawnClearScreenParticles();
+        updateHUD();
+      }
+
+      // 敌人刷新间隔：等级越高越短
+      enemySpawnInterval = clamp(1.4 - (gameState.level - 1) * 0.1, 0.45, 1.4);
+      enemySpawnTimer += dt;
+
+      if (enemySpawnTimer >= enemySpawnInterval) {
+        enemySpawnTimer = 0;
+        spawnEnemy();
+      }
+
+      // 道具刷新
+      powerSpawnTimer += dt;
+      if (powerSpawnTimer >= powerSpawnInterval) {
+        powerSpawnTimer = 0;
+        spawnPowerUp();
+      }
+    }
+
+    function spawnEnemy() {
+      const levelFactor = 1 + (gameState.level - 1) * 0.12;
+      const hpFactor = 1 + (gameState.level - 1) * 0.18;
+
+      // 根据当前等级，大致控制三种敌人的比例
+      let type = 'mortal';
+      const r = Math.random();
+      if (gameState.level <= 2) {
+        type = r < 0.7 ? 'mortal' : 'monster';
+      } else if (gameState.level <= 4) {
+        if (r < 0.5) type = 'mortal';
+        else if (r < 0.85) type = 'monster';
+        else type = 'evil';
+      } else {
+        if (r < 0.35) type = 'mortal';
+        else if (r < 0.7) type = 'monster';
+        else type = 'evil';
+      }
+
+      const enemy = new Enemy(type, levelFactor, hpFactor);
+      enemies.push(enemy);
+    }
+
+    function spawnPowerUp() {
+      const kind = Math.random() < 0.5 ? 'spread' : 'shield';
+      powerUps.push(new PowerUp(kind));
+    }
+
+    // ------------ 伤害与死亡处理 ------------
+    function damagePlayer() {
+      if (gameState.holdShield) {
+        // 护盾抵消一次伤害
+        gameState.holdShield = false;
+        updateHUD();
+        // 如果此时生命为 1，则触发成就“千钧一发”
+        if (gameState.lives === 1) {
+          achievementManager.triggerLastMomentShield();
+        }
+        // 护盾破碎粒子效果
+        spawnClearScreenParticles();
+        return;
+      }
+
+      gameState.lives--;
+      updateHUD();
+
+      if (gameState.lives <= 0) {
+        gameOver();
+      }
+    }
+
+    function gameOver() {
+      gameState.gameOver = true;
+      gameState.running = false;
+      showModal('渡劫失败', `本次修行共获得 ${gameState.score} 灵石，达到第 ${gameState.level} 境。`, '再次修行');
+    }
+
+    // ------------ 模态框逻辑 ------------
+    let currentModalType = 'start';
+
+    function showModal(title, message, buttonText) {
+      modalTitle.textContent = title;
+      modalMessage.textContent = message;
+      modalButton.textContent = buttonText || '继续';
+      modalOverlay.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        modalPanel.classList.remove('opacity-0', 'scale-95');
+        modalPanel.classList.add('opacity-100', 'scale-100');
+      });
+    }
+
+    function hideModal() {
+      modalPanel.classList.remove('opacity-100', 'scale-100');
+      modalPanel.classList.add('opacity-0', 'scale-95');
+      setTimeout(() => {
+        modalOverlay.classList.add('hidden');
+      }, 200);
+    }
+
+    modalButton.addEventListener('click', () => {
+      if (currentModalType === 'start') {
+        startGame();
+      } else if (currentModalType === 'pause') {
+        togglePause(true);
+      } else if (currentModalType === 'gameover') {
+        restartGame();
+      }
+    });
+
+    function startGame() {
+      hideModal();
+      resetGameState();
+      gameState.running = true;
+      gameState.paused = false;
+      gameLoop(performance.now());
+    }
+
+    function restartGame() {
+      hideModal();
+      resetGameState();
+      gameState.running = true;
+      gameState.gameOver = false;
+      gameLoop(performance.now());
+    }
+
+    function togglePause(forceResume = false) {
+      if (!gameState.running && !gameState.gameOver) return;
+
+      if (forceResume || gameState.paused) {
+        gameState.paused = false;
+        hideModal();
+        gameLoop(performance.now());
+      } else {
+        gameState.paused = true;
+        currentModalType = 'pause';
+        showModal('暂停修行', '调整呼吸，稍事休息。点击继续以御剑前行。', '继续修行');
+      }
+    }
+
+    function resetGameState() {
+      gameState.score = 0;
+      gameState.level = 1;
+      gameState.levelTimer = 0;
+      gameState.lives = 3;
+      gameState.killCount = 0;
+      gameState.enemiesEscaped = 0;
+      gameState.noLeakTimer = 0;
+      gameState.noLeakActive = true;
+      gameState.holdSpread = false;
+      gameState.holdShield = false;
+      gameState.shieldTriggeredAtOneHp = false;
+      gameState.lastShotTime = 0;
+      enemySpawnTimer = 0;
+      powerSpawnTimer = 0;
+      enemies.length = 0;
+      projectiles.length = 0;
+      powerUps.length = 0;
+      particles.length = 0;
+      achievementManager.reset();
+      player.reset();
+      updateHUD();
+    }
+
+    // ------------ 主循环 ------------
+    function gameLoop(timestamp) {
+      if (!gameState.running || gameState.paused) return;
+
+      const dtRaw = (timestamp - gameState.lastTime) / 1000;
+      gameState.lastTime = timestamp;
+      const dt = Math.min(dtRaw, 0.033); // 限制最大 dt，避免卡顿后速度异常
+
+      // 更新“未漏敌人”计时：一旦有敌人逃脱则归零并停止计时
+      if (gameState.noLeakActive) {
+        gameState.noLeakTimer += dt;
+      }
+
+      // 背景
+      drawBackground(dt);
+
+      // 更新生成器
+      updateSpawners(dt);
+
+      // 玩家射击控制
+      if (keys.fire) {
+        player.shoot(projectiles);
+      }
+
+      // 更新玩家
+      player.update(dt);
+      player.draw(ctx);
+
+      // 更新子弹
+      for (const p of projectiles) {
+        p.update(dt);
+        p.draw(ctx);
+      }
+
+      // 更新敌人
+      for (const e of enemies) {
+        e.update(dt, projectiles);
+        e.draw(ctx);
+      }
+
+      // 更新道具
+      for (const pu of powerUps) {
+        pu.update(dt);
+        pu.draw(ctx);
+      }
+
+      // 更新粒子
+      for (const part of particles) {
+        part.update(dt);
+        part.draw(ctx);
+      }
+
+      // ------------ 碰撞检测逻辑 ------------
+      /**
+       * 碰撞检测整体说明：
+       *  1. 玩家子弹 vs 敌人：使用圆-矩形碰撞（子弹是圆形，敌人用包围矩形）。
+       *  2. 敌人 vs 玩家：使用矩形-矩形碰撞（两者都用包围盒）。
+       *  3. 敌方子弹 vs 玩家：圆-矩形碰撞。
+       *  4. 道具 vs 玩家：圆-矩形碰撞（拾取判定）。
+       *
+       *  选择 AABB + 圆形碰撞的原因：
+       *   - 算法简单且计算量小，适合 60FPS 的实时游戏。
+       *   - 玩家与敌人视觉上近似矩形，子弹与道具近似圆形，符合直观。
+       */
+
+      const playerBox = player.getBoundingBox();
+
+      // 玩家子弹 vs 敌人
+      for (const p of projectiles) {
+        if (p.dead || p.owner !== 'player') continue;
+        for (const e of enemies) {
+          if (e.dead) continue;
+
+          const enemyBox = e.getBoundingBox();
+          if (circleRectCollision(p, enemyBox)) {
+            p.dead = true;
+            e.hp -= 20;
+            // 命中处产生少量粒子
+            spawnExplosion(p.x, p.y, '#bfdbfe');
+
+            if (e.hp <= 0) {
+              e.dead = true;
+              gameState.killCount++;
+              gameState.score += 15;
+              spawnExplosion(e.x, e.y, e.color);
+              updateHUD();
+            }
+            break;
+          }
+        }
+      }
+
+      // 敌人 vs 玩家
+      for (const e of enemies) {
+        if (e.dead) continue;
+        const enemyBox = e.getBoundingBox();
+        if (rectRectCollision(playerBox, enemyBox)) {
+          e.dead = true;
+          spawnExplosion(e.x, e.y, e.color);
+          damagePlayer();
+        }
+      }
+
+      // 敌方子弹 vs 玩家
+      for (const p of projectiles) {
+        if (p.dead || p.owner !== 'enemy') continue;
+        if (circleRectCollision(p, playerBox)) {
+          p.dead = true;
+          spawnExplosion(p.x, p.y, '#f97373');
+          damagePlayer();
+        }
+      }
+
+      // 道具 vs 玩家（拾取）
+      for (const pu of powerUps) {
+        if (pu.dead) continue;
+        const circle = { x: pu.x, y: pu.y, radius: pu.radius };
+        if (circleRectCollision(circle, playerBox)) {
+          pu.dead = true;
+          if (pu.kind === 'spread') {
+            gameState.holdSpread = true;
+          } else if (pu.kind === 'shield') {
+            gameState.holdShield = true;
+          }
+          updateHUD();
+        }
+      }
+
+      // 更新成就系统
+      achievementManager.update(dt);
+
+      // 清理死亡对象
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        if (projectiles[i].dead) projectiles.splice(i, 1);
+      }
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        if (enemies[i].dead) enemies.splice(i, 1);
+      }
+      for (let i = powerUps.length - 1; i >= 0; i--) {
+        if (powerUps[i].dead) powerUps.splice(i, 1);
+      }
+      for (let i = particles.length - 1; i >= 0; i--) {
+        if (particles[i].dead) particles.splice(i, 1);
+      }
+
+      // 继续下一帧
+      if (!gameState.gameOver) {
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    // ------------ 初始化并展示开始界面 ------------
+    function init() {
+      currentModalType = 'start';
+      modalExtra.textContent = 'WASD / 方向键：移动跳跃；空格：发射飞剑；P：暂停。';
+      modalButton.textContent = '开始修行';
+      updateHUD();
+      showModal('修仙弹幕·剑气纵横',
+        '在浮光掠影的云海间御剑飞行，斩尽前方万邪。准备好踏入修仙界了吗？',
+        '开始修行');
+    }
+
+    currentModalType = 'start';
+    init();
+  </script>
+</body>
+</html>
